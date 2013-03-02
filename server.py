@@ -4,6 +4,7 @@ Usage:  server.py daemon <graphfile> <port> [-v]
         server.py shell <graphfile> [-v]
         server.py batch <graphfile> <batchfile> [-v]
         server.py sock <graphfile> [-v]
+        server.py
 
 Starts the python mapping server.
 
@@ -307,6 +308,11 @@ class MappingServer:
 if __name__ == '__main__':
     # Started directly, parse command line options...
     arguments = docopt.docopt(__doc__)
+
+    if arguments['<graphfile>'] is None:
+        arguments['<graphfile>'] = 'edmonton-roads-2.0.1.txt'
+        arguments['stdin'] = True
+
     MappingServer(arguments)
 else:
     # Started as module, prepare ms object for use with exported functions...
