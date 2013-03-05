@@ -1,26 +1,24 @@
 """
-Usage:  server.py daemon <graphfile> <port> [-v]
-        server.py stdin <graphfile> [-v]
-        server.py shell <graphfile> [-v]
-        server.py batch <graphfile> <batchfile> [-v]
-        server.py sock <graphfile> [-v]
-        server.py
+Usage:  server.py stdin [options]
+        server.py shell [options]
+        server.py sock [options]
+        server.py serial <port> [options]
+        server.py [options]
 
 Starts the python mapping server.
 
 NOTE: For Assignment 3 Part 1, please execute
->> server.py stdin <graphfile>
+>> server.py
 
 All requests will be made by simply providing and latitude and longitude (in 100,000ths of degrees) of
 the start and end points in ASCII, separated by spaces and terminated by a newline.
 
 Modes:
-    daemon: The server will run in daemon mode, serving requests over serial
     stdin: The server will serve requests over stdin (Use for Assignment 3 Part 1)
         example
         contents of batch.txt: 5365488 -11333914 5364727 -11335890
         mapfile: edmonton-roads-2.0.1.txt
-        >> server.py stdin edmonton-roads-2.0.1.txt < batch.txt
+        >> server.py stdin < batch.txt
         8
         5365488 -11333914
         5365238 -11334423
@@ -35,8 +33,9 @@ Modes:
 Arguments:
 
 Options:
+  --graph <GRAPHFILE>  The file to load graph info [default: edmonton-roads-2.0.1.txt]
   -h --help
-  -v       verbose mode
+  -v                 verbose mode
 
 """
 
@@ -49,8 +48,7 @@ import logging.handlers
 
 from digraph import least_cost_path
 from readgraph import readgraph
-
-from async import *
+from async import run_async
 
 
 class MappingServer:
@@ -92,7 +90,7 @@ class MappingServer:
 
         # Read in graphfile into a graph object (self.G) and vertex names/data into (self.names)
         self.logger.info("Reading graphfile...")
-        (self.G, self.names) = readgraph(arguments['<graphfile>'])
+        (self.G, self.names) = readgraph(arguments['--graph'])
         self.logger.info("Reading of graphfile finished. Graph available.")
 
         # Parse configuration options
@@ -101,12 +99,80 @@ class MappingServer:
         elif arguments['shell']:
             import code
             code.interact(local=locals())
-        elif arguments['daemon']:
-            pass
         elif arguments['sock']:
             self._sock_mode()
+        elif arguments['serial'] and arguments['<port>']:
+            self._serial_mode(arguments['<port>'])
         else:
             pass
+
+    def _serial_mode(self, port):
+        import serial
+
+        self.logger.info("Opening serial port: {}".format(port))
+        self.serial_out = self.serial_in = serial.Serial(port, 9600)
+
+        try:
+            idx = 0
+            while True:
+                msg = self._serial_receive()
+
+                self.logger.debug("GOT:" + msg + ":")
+
+                try:
+                    point_1, point_2 = self._prepare_string(msg)
+                except ValueError:
+                    # self.logger.error("Invalid input> {}".format(msg.rstrip()))
+                    continue
+
+                # Compute the least_cost_path from the two points
+                _lcp = self._lcp(point_1, point_2)
+
+                self.logger.info("Sending LCP over serial...")
+
+                if _lcp:
+                    self._serial_send(len(_lcp))
+
+                    for vertex_id in _lcp:
+
+                        point = self.names[0][vertex_id]
+
+                        point = self._coord_trans(point)
+
+                        self._serial_send('{0[0]} {0[1]}'.format(point))
+
+                self.logger.info("Serial send finished!")
+
+                # Print the result using formatter function
+                # self._print_lcp(_lcp)
+                idx += 1
+
+        except KeyboardInterrupt:
+            pass
+
+    def _serial_send(self, message):
+        """
+        Sends a message back to the client device.
+        """
+        full_message = ''.join((str(message), "\n"))
+
+        # self.logger.debug("server:" + str(message) + ":")
+
+        reencoded = bytes(full_message, encoding='ascii')
+        self.serial_out.write(reencoded)
+
+    def _serial_receive(self, timeout=None):
+        """
+        Listen for a message. Attempt to timeout after a certain number of
+        milliseconds.
+        """
+        raw_message = self.serial_in.readline()
+
+        # self.logger.debug("client:" + str(raw_message) + ":")
+
+        message = raw_message.decode('ascii')
+
+        return message.rstrip("\n\r")
 
     def _print_lcp(self, path):
         """
@@ -189,7 +255,7 @@ class MappingServer:
         """
         self.logger.error("SIGINT caught during socket mode, closing socket..")
         try:
-            self.serversocket.shutdown(socket.SHUT_RDWR)
+            self.serversocket.shutdown(self.serversocket.SHUT_RDWR)
         except OSError:
             pass
         self.serversocket.close()
@@ -309,14 +375,19 @@ if __name__ == '__main__':
     # Started directly, parse command line options...
     arguments = docopt.docopt(__doc__)
 
-    if arguments['<graphfile>'] is None:
-        arguments['<graphfile>'] = 'edmonton-roads-2.0.1.txt'
-        arguments['stdin'] = True
+    blank_check = ['stdin', 'shell', 'sock', 'serial']
+
+    for mode in blank_check:
+        if arguments[mode] is not None:
+            break
+        else:
+            arguments['stdin'] = True
 
     MappingServer(arguments)
+
 else:
     # Started as module, prepare ms object for use with exported functions...
-    arguments = {'-v': False, '<batchfile>': None, '<graphfile>': 'edmonton-roads-2.0.1.txt', '<port>': None, 'batch': False, 'daemon': False, 'shell': False, 'sock': False, 'stdin': False}
+    arguments = {'--graph': 'edmonton-roads-2.0.1.txt', '-v': False, '<port>': None, 'serial': False, 'shell': False, 'sock': False, 'stdin': False}
     ms = MappingServer(arguments)
 
     def cost_distance(e):
