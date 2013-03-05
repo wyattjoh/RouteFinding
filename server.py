@@ -150,6 +150,11 @@ class MappingServer:
 
         except KeyboardInterrupt:
             pass
+        except OSError as e:
+            if e.errno == 6:
+                self.logger.error("Serial Device disconnected before serial interface closed.")
+            else:
+                raise e
 
     def _serial_send(self, message):
         """
