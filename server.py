@@ -34,6 +34,7 @@ Arguments:
 
 Options:
   --graph <GRAPHFILE>  The file to load graph info [default: edmonton-roads-2.0.1.txt]
+  --logfile <LOGFILE>  The location of the logfile [default: MappingServer.log]
   -h --help
   -v                 verbose mode
 
@@ -66,7 +67,7 @@ class MappingServer:
         self.logger = logging.getLogger('MappingServer')
         self.logger.setLevel(logging.DEBUG)
         # create file handler which logs even debug messages
-        fh = logging.handlers.RotatingFileHandler('MappingServer.log', maxBytes=10000)
+        fh = logging.handlers.RotatingFileHandler(arguments['--logfile'], maxBytes=10000)
         fh.setLevel(logging.DEBUG)
         # create console handler with a higher log level
         ch = logging.StreamHandler()
@@ -377,17 +378,14 @@ if __name__ == '__main__':
 
     blank_check = ['stdin', 'shell', 'sock', 'serial']
 
-    for mode in blank_check:
-        if arguments[mode] is not None:
-            break
-        else:
-            arguments['stdin'] = True
+    if not (arguments['stdin'] or arguments['shell'] or arguments['sock'] or arguments['serial']):
+        arguments['stdin'] = True
 
     MappingServer(arguments)
 
 else:
     # Started as module, prepare ms object for use with exported functions...
-    arguments = {'--graph': 'edmonton-roads-2.0.1.txt', '-v': False, '<port>': None, 'serial': False, 'shell': False, 'sock': False, 'stdin': False}
+    arguments = {'--graph': 'edmonton-roads-2.0.1.txt', '--help': False, '--logfile': 'MappingServer.log', '-v': False, '<port>': None, 'serial': False, 'shell': False, 'sock': False, 'stdin': True}
     ms = MappingServer(arguments)
 
     def cost_distance(e):
